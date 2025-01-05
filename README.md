@@ -1,2 +1,2 @@
 # Statistical-Modelling-in-R-UIUC
-These are subject assignments for uiuc stat 420
+This is the group assignment for uiuc stat 420
