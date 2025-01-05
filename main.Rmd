@@ -1,0 +1,935 @@
+---
+title: "Analysis of Building Energy Consumption Factors in Southern California"
+author: "Stat420 No.1"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+  pdf_document:
+    toc: true
+    toc_depth: 3
+---
+
+```{r setup, echo = FALSE, message = FALSE, warning = FALSE}
+options(scipen = 1, digits = 4, width = 80, fig.alin = "center")
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+```
+
+# Team Members
+
+-   Xingzhi Du
+-   Chen Liu
+-   Banghao Chi
+
+
+# Introduction
+
+This project explores factors influencing building energy consumption in Southern California. Energy efficiency is a critical concern in modern urban settings, particularly in regions with high electricity demands and varying environmental conditions. By analyzing energy consumption data, we aim to identify patterns and factors that drive electricity usage, offering insights for energy optimization.
+
+## Background and Description of the Dataset
+
+-   **Source**: [Kaggle](https://www.kaggle.com/datasets/datasetengineer/southern-california-energy-consumption)\
+
+-   **Description**:\
+    The dataset contains hourly electricity usage data for residential, commercial, and industrial buildings in Southern California, spanning from January 2018 to January 2024. It includes over 100 facilities and integrates information from smart meters, IoT sensors, and utility companies. Key metrics include electricity usage, weather conditions, and building characteristics, making it suitable for time-series analysis, energy forecasting, and studying energy efficiency.
+
+-   **Dataset Summary**:
+
+    -   **Number of Records**: 52,586\
+    -   **Number of Variables**: 12\
+    -   **Key Variables**:
+        -   **Timestamp**: Hourly record of electricity usage.\
+        -   **Building Type**: Categorical variable (residential, commercial, or industrial).\
+        -   **Energy Consumption (kWh)**: Continuous numeric variable representing total electricity usage.\
+        -   **Temperature (°C)**: Continuous numeric variable reflecting ambient temperature.\
+        -   **Solar Radiation (W/m²)**: Continuous numeric variable measuring solar energy exposure.\
+        -   **HVAC Consumption (kWh)**: Continuous numeric variable for heating, ventilation, and air conditioning energy usage.\
+        -   **Lighting Consumption (kWh)**: Continuous numeric variable for lighting energy usage.\
+        -   **Peak Demand Reduction Indicator**: Binary variable indicating participation in demand-response programs.\
+        -   **Energy Price (\$/kWh)**: Continuous numeric variable indicating electricity costs.\
+        -   **Building Age**: Numeric variable indicating building age in years.\
+        -   **Building Size**: Numeric variable measuring the building's area in square meters.\
+        -   **Carbon Emission Reduction Category**: Categorical variable based on sustainability initiatives.
+
+```{r}
+library(ggplot2)
+library(dplyr)
+data = read.csv("electricity_consumption_optimization_dataset.csv")
+str(data)
+```
+
+## Objectives
+
+\` This analysis aims to:
+
+1.  Identify the key factors that significantly impact building energy consumption.
+2.  Develop a predictive model for energy usage based on available data.
+3.  Provide actionable insights for optimizing energy strategies in Southern California buildings.
+
+## Statement of Interest
+
+In an era of increasing focus on climate change and energy efficiency, understanding the factors that influence building energy consumption is crucial for sustainable urban development. This dataset offers a valuable opportunity to uncover patterns and develop strategies for optimizing energy usage in Southern California, contributing to more sustainable and efficient energy management practices.
+
+# Methods
+
+## Data Acquisition and Cleaning
+
+The raw dataset was first loaded and cleaned to prepare it for analysis. The following steps were performed:
+
+1.  **Filtering for Full Year 2023**:
+    -   The dataset was filtered to include only records from January 1, 2023, to December 31, 2023, based on the `Timestamp` column.
+2.  **Selecting Relevant Columns**:
+    -   Only columns relevant to energy consumption analysis were retained, such as building type, energy consumption, temperature, and solar irradiance and so on.
+3.  **Removing Negative Values**:
+    -   Columns with numeric data (e.g., `Energy Consumption`, `Solar Irradiance and so on`) were checked for invalid negative values, which were removed.
+4.  **Random Sampling**:
+    -   The filtered dataset was randomly sampled to 2000 rows to make the analysis manageable.
+5.  **Saving Cleaned Data**:
+    -   The cleaned dataset was saved to a CSV file for further analysis.
+
+Next, we will first acquire the data and then perform data cleaning
+
+### Data Acquisition
+
+```{r}
+df = read.csv("electricity_consumption_optimization_dataset.csv")
+head(df)
+names(df)
+# Load required libraries
+library(lubridate)
+
+# Convert Timestamp to proper datetime format
+df$Timestamp = dmy_hm(df$Timestamp)  # This handles dd/mm/yyyy HH:MM format
+
+# Filter for full year 2023 and keep all columns
+df_2023 = df %>%
+  filter(Timestamp >= as.POSIXct("2023-01-01 00:00:00") & 
+         Timestamp <= as.POSIXct("2023-12-31 23:59:59")) %>%
+  select(
+    'Timestamp',
+    'Building.Type',
+    'Energy.Consumption..kWh.',
+    'Temperature',
+    'Solar.Irradiance',
+    'HVAC.Consumption..kWh.',
+    'Lighting.Consumption..kWh.',
+    'Peak.Demand.Reduction.Indicator',
+    'Energy.Price....kWh.',
+    'Building.Age..years.',
+    'Building.Size.m.2.',
+    'Carbon.Emission.Reduction.Category'
+  )
+
+# set seed to ensure reproducibility
+set.seed(123)
+final_df = df_2023 %>%
+  slice_sample(n = 2000)
+
+# Save the filtered data to a new CSV file
+write.csv(final_df, "energy_data_20231.csv", row.names = FALSE)
+
+# Check the date range in the final dataset
+range(final_df$Timestamp)
+
+# Check dimensions of the new dataset
+dim(final_df)
+```
+
+### Data cleaning
+
+```{r}
+# Load the cleaned data
+energy_data = read.csv("energy_data_20231.csv")
+
+# Convert negative values to NA for numeric columns (except Peak.Demand.Reduction.Indicator)
+clean_data = energy_data %>%
+  mutate(
+    Energy.Consumption..kWh. = ifelse(Energy.Consumption..kWh. < 0, NA, Energy.Consumption..kWh.),
+    Solar.Irradiance = ifelse(Solar.Irradiance < 0, NA, Solar.Irradiance),
+    HVAC.Consumption..kWh. = ifelse(HVAC.Consumption..kWh. < 0, NA, HVAC.Consumption..kWh.),
+    Lighting.Consumption..kWh. = ifelse(Lighting.Consumption..kWh. < 0, NA, Lighting.Consumption..kWh.),
+    Energy.Price....kWh. = ifelse(Energy.Price....kWh. < 0, NA, Energy.Price....kWh.),
+    Building.Age..years. = ifelse(Building.Age..years. < 0, NA, Building.Age..years.),
+    Building.Size.m.2. = ifelse(Building.Size.m.2. < 0, NA, Building.Size.m.2.)
+  )
+
+# Remove rows with any NA values
+final_clean_data = clean_data %>%
+  na.omit()
+
+# Ensure the output column names are consistent
+final_clean_data = final_clean_data %>%
+  select(
+    Timestamp,
+    Building.Type,
+    Energy.Consumption..kWh.,
+    Temperature,
+    Solar.Irradiance,
+    HVAC.Consumption..kWh.,
+    Lighting.Consumption..kWh.,
+    Peak.Demand.Reduction.Indicator,
+    Energy.Price....kWh.,
+    Building.Age..years.,
+    Building.Size.m.2.,
+    Carbon.Emission.Reduction.Category
+  )
+
+# Save the cleaned data
+write.csv(final_clean_data, "energy_data_2023_clean.csv", row.names = FALSE)
+
+# Check how many rows were removed
+cat("Original number of rows:", nrow(energy_data), "\n")
+cat("Number of rows after removing NA values:", nrow(final_clean_data), "\n")
+cat("Number of rows removed:", nrow(energy_data) - nrow(final_clean_data), "\n")
+
+# View summary statistics of numeric columns
+summary(final_clean_data)
+# Check dimensions of final dataset
+dim(final_clean_data)
+```
+
+## Statistical Analysis
+
+To understand the characteristics of the data and relationships between variables, we performed the following analyses:
+
+1.  **Descriptive Statistics**:
+    -   Summary statistics were calculated for all numeric variables to understand the central tendency and variability.
+    -   Standard deviation was computed to measure data dispersion.
+
+```{r}
+# Descriptive statistics
+summary(final_clean_data)
+
+# Standard deviation for numeric columns
+numeric_columns = final_clean_data %>%
+  select(where(is.numeric))
+sapply(numeric_columns, sd, na.rm = TRUE)
+```
+
+## Dataset Splitting
+
+The dataset was divided into a training set (80%) and a testing set (20%) to ensure robust evaluation of model performance.
+
+```{r}
+# Set seed for reproducibility
+set.seed(123)
+
+# Split the data into training (80%) and testing (20%) sets
+train_indices = sample(1:nrow(final_clean_data), size = 0.8 * nrow(final_clean_data))
+train_data = final_clean_data[train_indices, ]
+test_data = final_clean_data[-train_indices, ]
+
+# Check dimensions of the splits
+dim(train_data)  # Training set
+dim(test_data)   # Testing set
+```
+
+After splitting the dataset, the training set will be used to explore various modeling approaches, including simple and multiple linear regression, interaction terms, and transformations. The testing set will be used to evaluate model performance using metrics such as RMSE and R-squared, ensuring the model's applicability to unseen data.
+
+## Distribution Analysis
+
+Histograms and density plots were created to examine the distribution of key variables. Boxplots were used to explore the relationship between the categorical variable Building.Type and the response variable Energy.Consumption..kWh.. All of which are examined to enhance the understanding of the energy consumption dataset.
+
+```{r}
+# Histogram
+ggplot(final_clean_data, aes(x = Energy.Consumption..kWh.)) +
+  geom_histogram(bins = 30, fill = "blue", color = "black", alpha = 0.7) +
+  labs(title = "Distribution of Energy Consumption", x = "Energy Consumption (kWh)", y = "Frequency")
+```
+
+The energy consumption data follows an approximately normal distribution with a slight right skew. The peak occurs around 50-60 kWh, with consumption values ranging from 0 to 120 kWh. Most households consume between 20-100 kWh, though some outliers show notably higher usage. CopyRetry
+
+```{r}
+# Density plot for Temperature
+ggplot(final_clean_data, aes(x = Temperature)) +
+  geom_density(fill = "green", alpha = 0.5) +
+  labs(title = "Density Plot of Temperature", x = "Temperature (°C)", y = "Density")
+```
+
+The temperature distribution shows a slight right skew, with values ranging from -7-62°C and peaking at around 20°C. Most temperatures fall between 0-40°C, though some higher temperature readings are observed.
+
+```{r}
+# Boxplot for Building Type vs Energy Consumption
+ggplot(final_clean_data, aes(x = Building.Type, y = Energy.Consumption..kWh., fill = Building.Type)) +
+  geom_boxplot() +
+  labs(title = "Energy Consumption by Building Type", x = "Building Type", y = "Energy Consumption (kWh)")
+```
+
+The boxplot compares energy consumption across three building types: commercial, industrial, and residential. All three categories show similar median consumption around 50-55 kWh, implying the energy consumption for all three building types are mostly the same. The spread of consumption is also comparable across types, though residential buildings exhibit more outliers at higher consumption levels. The interquartile ranges span roughly from 40-70 kWh for all building types.
+
+## Correlation Analysis Results
+
+-   In the **pairs plot**, strong correlations should appear as a **clear trend** (e.g., points aligned along a line, sloping upwards for positive correlation).
+
+-   However, in the scatterplots involving the response variable, the points appear to form **random clouds** rather than a strong trend.
+
+-   The corresponding **correlation coefficients** (small values close to zero in the upper triangle) and the correlation matrix confirm that **no variables show a strong correlation** with the response variable.
+
+```{r}
+library(faraway)
+# Select numeric columns for analysis
+numeric_columns = final_clean_data %>%
+  select(Energy.Consumption..kWh.,
+         Temperature,
+         Solar.Irradiance,
+         HVAC.Consumption..kWh.,
+         Lighting.Consumption..kWh.,
+         Energy.Price....kWh.,
+         Building.Age..years.,
+         Building.Size.m.2.)
+
+# Custom panel.cor function to add correlation coefficients
+panel.cor = function(x, y, digits = 2, prefix = "", cex.cor = 0.8, ...) {
+    usr = par("usr")
+    on.exit(par(usr))
+    par(usr = c(0, 1, 0, 1))
+    r = cor(x, y, use = "complete.obs")
+    txt = format(c(r, 0.123456789), digits = digits)[1]
+    txt = paste0(prefix, txt)
+    text(0.5, 0.5, txt, cex = cex.cor)
+}
+# Generate the pairs plot in the Results section
+pairs(numeric_columns,
+      col = "dodgerblue",
+      pch = 16,
+      cex = 0.5,
+      gap = 0,
+      upper.panel = panel.cor,
+      lower.panel = panel.smooth)
+```
+
+## Training and Testing Set Results
+
+The dataset was successfully split into training and testing sets to prepare for model building and validation: - **Training Set**: 80% of the data, containing `r nrow(train_data)` rows. - **Testing Set**: 20% of the data, containing `r nrow(test_data)` rows.
+
+The following histogram illustrates the distribution of `Energy.Consumption..kWh.` in both the training and testing sets. The distributions are similar, indicating that the split has maintained the representativeness of the original dataset.
+
+### Compare means and standard deviations between training and testing sets
+
+```{r}
+# Combine training and testing sets for visualization
+train_data$Set = "Training Set"
+test_data$Set = "Testing Set"
+combined_data = rbind(train_data, test_data)
+
+# Histogram comparison
+ggplot(combined_data, aes(x = Energy.Consumption..kWh., fill = Set)) +
+  geom_histogram(bins = 30, alpha = 0.7, position = "identity", color = "black") +
+  labs(title = "Energy Consumption Distribution in Training vs. Testing Sets",
+       x = "Energy Consumption (kWh)", y = "Frequency") +
+  scale_fill_manual(name = "Dataset", values = c("Training Set" = "lightblue", "Testing Set" = "red")) +
+  theme_minimal()
+```
+
+```{r}
+train_summary = train_data %>% summarise(across(where(is.numeric), list(mean = mean, sd = sd), na.rm = TRUE))
+test_summary = test_data %>% summarise(across(where(is.numeric), list(mean = mean, sd = sd), na.rm = TRUE))
+print(train_summary)
+print(test_summary)
+```
+
+## Discussion of the Preparation Process
+
+### Statistical Analysis
+
+The initial descriptive statistics provided insights into the central tendencies and variabilities of the key variables in the dataset. Specifically:
+
+Energy Consumption (kWh): The mean energy consumption was approximately 54.3 kWh, with a standard deviation of 19.48 kWh, indicating moderate variability in energy usage across the analyzed buildings.
+
+Temperature (°C): The average temperature was 21.1°C, with a standard deviation of 10.01°C. This highlights the diverse climate conditions in Southern California over the analyzed period.
+
+HVAC and Lighting Consumption: These two predictors showed relatively high means (16.35 kWh and 11.32 kWh, respectively) with lower variability compared to other predictors, suggesting their consistent contributions to overall energy consumption.
+
+These statistics provided a foundational understanding of the dataset and highlighted variables likely to have significant effects on energy consumption.
+
+### Possible Explanations for Low Correlation
+
+1.  **Non-linear Relationships**:
+    -   Variables like **Temperature** may have non-linear effects (e.g., higher energy consumption during extreme weather).
+2.  **Interaction Effects**:
+    -   Certain predictors (e.g., **HVAC.Consumption..kWh.** and **Temperature**) might interact, amplifying their combined impact.
+3.  **Uncaptured Variables**:
+    -   Missing factors such as building occupancy or time-of-day effects could mask true relationships.
+
+### Implications for Model Building
+
+#### Addressing Non-linearities
+
+-   Apply transformations (e.g., log or square root) to variables like **Solar.Irradiance** and **Temperature** to capture non-linear trends.
+
+#### Investigating Interaction Effects
+
+-   Explore interactions (e.g., **HVAC.Consumption..kWh.** × **Temperature**) to account for combined effects on energy usage.
+
+#### Refining Variable Selection
+
+-   Use methods like AIC/BIC or LASSO to identify the most significant predictors for the model.
+
+### Dataset Splitting Analysis
+
+The training and testing sets were split with an 80/20 ratio, maintaining the overall distribution of `Energy.Consumption..kWh.`. Consistency in means and standard deviations across both sets confirms their representativeness. This ensures the training set provides robust data for model building, while the testing set allows unbiased performance evaluation, creating a solid foundation for predictive modeling.
+
+# Results
+
+## Simple Linear Regression Analysis
+
+Based on our correlation analysis from earlier sections, we'll begin by exploring the relationship between Energy Consumption and HVAC Consumption using simple linear regression. This will help us understand the baseline relationship before moving to more complex models.
+
+### SLR with HVAC Consumption
+
+```{r}
+# Fit SLR model using HVAC consumption as predictor
+slr_model = lm(Energy.Consumption..kWh. ~ HVAC.Consumption..kWh., data = train_data)
+summary(slr_model)
+```
+
+The simple linear regression results show surprisingly weak relationship between HVAC consumption and total energy consumption:
+
+-   The coefficient for HVAC consumption (-0.0575) is not statistically significant (p-value = 0.45)
+-   The extremely low R-squared value (0.000387) indicates that HVAC consumption alone explains virtually none of the variance in total energy consumption
+-   The F-statistic (0.57) with a p-value of 0.45 suggests this model is not better than a horizontal line
+
+Let's visualize this relationship:
+
+```{r}
+# Plot the relationship
+ggplot(train_data, aes(x = HVAC.Consumption..kWh., y = Energy.Consumption..kWh.)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "lm", color = "blue") +
+  labs(title = "Energy Consumption vs HVAC Consumption",
+       x = "HVAC Consumption (kWh)",
+       y = "Energy Consumption (kWh)")
+```
+
+The scatter plot confirms our statistical findings, showing a nearly flat regression line and widely scattered points, suggesting that the relationship between HVAC consumption and total energy consumption is not linear, or that other factors may be more important in determining total energy consumption.
+
+### SLR with Temperature
+
+After examining HVAC consumption, we'll investigate the relationship between temperature and energy consumption, as temperature is often considered a key driver of building energy use through its impact on heating and cooling needs.
+
+```{r}
+# SLR with Temperature
+slr_temp = lm(Energy.Consumption..kWh. ~ Temperature, data = train_data)
+summary(slr_temp)
+
+# Plot Temperature relationship
+ggplot(train_data, aes(x = Temperature, y = Energy.Consumption..kWh.)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "lm", color = "blue") +
+  labs(title = "Energy Consumption vs Temperature",
+       x = "Temperature (°C)",
+       y = "Energy Consumption (kWh)")
+```
+
+The temperature-based SLR model shows:
+
+-   A very weak negative relationship (coefficient = -0.0452)
+-   No statistical significance (p-value = 0.37)
+-   Extremely low R-squared (0.000539), indicating temperature alone explains virtually none of the variance in energy consumption
+-   The nearly flat regression line and scattered points suggest that the relationship between temperature and energy consumption might be non-linear, or that other factors may be more important
+
+### SLR with Building Size
+
+Next, we'll examine how building size relates to energy consumption, as larger buildings might be expected to consume more energy for lighting, heating, and cooling.
+
+```{r}
+# SLR with Building Size
+slr_size = lm(Energy.Consumption..kWh. ~ Building.Size.m.2., data = train_data)
+summary(slr_size)
+
+# Plot Building Size relationship
+ggplot(train_data, aes(x = Building.Size.m.2., y = Energy.Consumption..kWh.)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "lm", color = "blue") +
+  labs(title = "Energy Consumption vs Building Size",
+       x = "Building Size (m²)",
+       y = "Energy Consumption (kWh)")
+```
+
+The building size model reveals:
+
+-   A significant but very small negative relationship (coefficient = -0.00222, p-value = 0.032)
+-   While statistically significant, the practical significance is minimal given the extremely low R-squared (0.00311)
+-   The F-statistic (4.59) indicates the model is marginally better than a null model, but still explains very little variation
+-   Similar to previous models, the scattered points and nearly flat line suggest that building size alone is not a strong predictor of energy consumption
+
+### SLR with Lighting Consumption
+
+Finally, we'll analyze the relationship between lighting consumption and total energy consumption, as lighting is typically a significant component of building energy use.
+
+```{r}
+# SLR with Lighting Consumption
+slr_light = lm(Energy.Consumption..kWh. ~ Lighting.Consumption..kWh., data = train_data)
+summary(slr_light)
+
+# Plot Lighting Consumption relationship
+ggplot(train_data, aes(x = Lighting.Consumption..kWh., y = Energy.Consumption..kWh.)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "lm", color = "blue") +
+  labs(title = "Energy Consumption vs Lighting Consumption",
+       x = "Lighting Consumption (kWh)",
+       y = "Energy Consumption (kWh)")
+```
+
+The lighting consumption model shows:
+
+-   A very weak positive relationship (coefficient = 0.0382)
+-   No statistical significance (p-value = 0.71)
+-   The lowest R-squared of all models (9.35e-05), indicating practically no explanatory power
+-   The visualization confirms the lack of relationship with widely scattered points and a nearly horizontal regression line
+
+### Summary of SLR Analyses
+
+After examining four different predictors (HVAC, Temperature, Building Size, and Lighting Consumption) through simple linear regression:
+
+1.  None of the individual predictors explain more than 0.5% of the variation in energy consumption
+2.  Only building size showed statistical significance, but with minimal practical importance
+3.  The consistently flat regression lines and scattered points across all analyses suggest that:
+    -   Multiple factors might need to be considered simultaneously
+    -   The data might need transformation or different modeling approaches
+
+These findings strongly suggest we should proceed with multiple regression analysis and consider non-linear relationships or interactions between variables.
+
+## Multiple Linear Regression Analysis
+
+Given the poor performance of the simple linear regression model, let's extend our analysis to include multiple predictors that might better explain the variation in energy consumption.
+
+### Initial Full Model
+
+We'll start by including all relevant numeric predictors to see their combined effect on energy consumption:
+
+```{r}
+# Fit full MLR model
+mlr_full = lm(Energy.Consumption..kWh. ~ Temperature + Solar.Irradiance + 
+               HVAC.Consumption..kWh. + Lighting.Consumption..kWh. + 
+               Energy.Price....kWh. + Building.Age..years. + Building.Size.m.2. +
+               Peak.Demand.Reduction.Indicator, data = train_data)
+summary(mlr_full)
+```
+
+The full multiple regression model results show
+
+-   Building.Size.m.2. is the only significant predictor (p \< 0.05)
+-   The overall model explains only 0.547% of the variance (R-squared = 0.00547)
+-   The F-statistic (1.01) with p-value = 0.429 indicates the model is not significantly better than the null model
+
+### Checking for Multicollinearity
+
+Before making any conclusions about the model, we should check for multicollinearity among predictors:
+
+```{r}
+library(car)
+vif(mlr_full)
+```
+
+The VIF analysis shows:
+
+-   All VIF values are close to 1 (ranging from 1.002 to 1.007)
+-   There is no significant multicollinearity among predictors
+-   No need to remove variables based on VIF values
+
+Despite the low VIF values, let's try a reduced model focusing on the most theoretically relevant predictors:
+
+```{r}
+mlr_reduced = lm(Energy.Consumption..kWh. ~ Temperature + Solar.Irradiance + 
+                  HVAC.Consumption..kWh. + Energy.Price....kWh. + 
+                  Building.Age..years. + Peak.Demand.Reduction.Indicator,
+                  data = train_data)
+vif(mlr_reduced)
+```
+
+The reduced model maintains low VIF values, confirming the absence of multicollinearity.
+
+### Influential Points Analysis
+
+Next, let's examine whether our model is being affected by influential observations:
+
+```{r}
+# Calculate Cook's distance
+cooks_d = cooks.distance(mlr_reduced)
+plot(cooks_d, type = "h", main = "Cook's Distance Plot")
+abline(h = 4/length(cooks_d), col = "red")
+```
+
+```{r}
+# Identify influential points
+influential = which(cooks_d > 4/length(cooks_d))
+length(influential)
+```
+
+The Cook's distance plot reveals:
+
+-   65 influential points were identified (above the threshold line)
+-   These points might be affecting our model estimates
+
+Let's refit the model without these influential points:
+
+```{r}
+# Fit model without influential points
+mlr_no_influential = lm(Energy.Consumption..kWh. ~ Temperature + Solar.Irradiance + 
+               HVAC.Consumption..kWh. + Lighting.Consumption..kWh. + 
+               Energy.Price....kWh. + Building.Age..years. + Building.Size.m.2. +
+               Peak.Demand.Reduction.Indicator,
+               data = train_data[-influential,])
+summary(mlr_no_influential)
+```
+
+After removing influential points and using all predictors:
+
+-   Building.Size.m.2. (p = 0.062) and Peak.Demand.Reduction.Indicator (p = 0.055) are marginally significant at the 0.10 level
+-   None of the other predictors shows statistical significance, with very high p-values ranging from 0.233 to 0.914
+-   The R-squared value remains extremely low (0.00664), indicating the model explains less than 1% of the variance in energy consumption
+-   The F-statistic of 1.17 with p-value = 0.314 suggests that the overall model is not significantly better than using the mean alone to predict energy consumption
+-   The residual standard error of 17.6 indicates considerable unexplained variation in the response variable
+
+### Model Diagnostics
+
+Let's check the assumptions of our model:
+
+```{r}
+# Check normality assumption
+qqnorm(resid(mlr_no_influential))
+qqline(resid(mlr_no_influential))
+
+# Check constant variance
+plot(fitted(mlr_no_influential), resid(mlr_no_influential),
+     xlab = "Fitted values", ylab = "Residuals",
+     main = "Residuals vs Fitted Values")
+abline(h = 0, col = "red")
+```
+
+The diagnostic plots reveal:
+
+-   The Q-Q plot fails to show clear normal distribution of residuals, with some deviation in the tails
+-   The residuals vs. fitted plot shows pattern of most points clustered around fitted values of 54, suggesting heteroscedasticity
+
+These results suggest we might need to consider:
+
+1.  Non-linear relationships between predictors and response
+2.  Interaction effects between predictors
+3.  Additional important variables not currently in the model
+4.  Different modeling approaches beyond linear regression
+
+#### Response transformation
+
+```{r}
+# Perform Box-Cox transformation analysis
+library(MASS)
+bc = boxcox(mlr_no_influential)
+lambda = bc$x[which.max(bc$y)]
+print(lambda)
+```
+
+Since lambda is 0.91 which is close to 1, we can try both no transformation and a log transformation to compare which model performs better.
+
+```{r}
+# Log model
+mlr_log = lm(log(Energy.Consumption..kWh.) ~ Temperature + Solar.Irradiance + 
+               HVAC.Consumption..kWh. + Lighting.Consumption..kWh. + 
+               Energy.Price....kWh. + Building.Age..years. + Building.Size.m.2. +
+               Peak.Demand.Reduction.Indicator,
+               data = train_data[-influential,])
+summary(mlr_log)
+
+# Check diagnostics for both models
+# Original model diagnostics
+par(mfrow=c(1,2))
+plot(mlr_no_influential, which=1)
+plot(mlr_no_influential, which=2)
+
+# Log transformed model diagnostics
+par(mfrow=c(1,2))
+plot(mlr_log, which=1)
+plot(mlr_log, which=2)
+
+# Formal tests for both models
+library(lmtest)
+# Original model tests
+shapiro.test(resid(mlr_no_influential))
+bptest(mlr_no_influential)
+
+# Log transformed model tests
+shapiro.test(resid(mlr_log))
+bptest(mlr_log)
+```
+
+From bptest, swtest, fitted vs residuals plot and qq plot, we can conclude that the original model without influential points is better.
+
+#### Interaction
+
+```{r}
+# Test interactions between temperature and HVAC consumption
+# (since temperature likely affects HVAC usage)
+mlr_interaction1 = lm(Energy.Consumption..kWh. ~ Temperature * HVAC.Consumption..kWh. + 
+                      Solar.Irradiance + Lighting.Consumption..kWh. + 
+                      Energy.Price....kWh. + Building.Age..years. + Building.Size.m.2. +
+                      Peak.Demand.Reduction.Indicator,
+                      data = train_data[-influential,])
+
+# Test interactions between temperature and building size
+# (since larger buildings might be more affected by temperature changes)
+mlr_interaction2 = lm(Energy.Consumption..kWh. ~ Temperature * Building.Size.m.2. + 
+                      HVAC.Consumption..kWh. + Solar.Irradiance + 
+                      Lighting.Consumption..kWh. + Energy.Price....kWh. + 
+                      Building.Age..years. + Peak.Demand.Reduction.Indicator,
+                      data = train_data[-influential,])
+
+# Test interactions between solar irradiance and HVAC consumption
+# (since solar heat might affect HVAC needs)
+mlr_interaction3 = lm(Energy.Consumption..kWh. ~ Solar.Irradiance * HVAC.Consumption..kWh. + 
+                      Temperature + Lighting.Consumption..kWh. + 
+                      Energy.Price....kWh. + Building.Age..years. + Building.Size.m.2. +
+                      Peak.Demand.Reduction.Indicator,
+                      data = train_data[-influential,])
+
+# Compare models using anova
+anova(mlr_no_influential, mlr_interaction1)
+anova(mlr_no_influential, mlr_interaction2)
+anova(mlr_no_influential, mlr_interaction3)
+
+# Summary of each interaction model
+summary(mlr_interaction1)
+summary(mlr_interaction2)
+summary(mlr_interaction3)
+
+# Temperature x HVAC interaction plot
+ggplot(train_data[-influential,], 
+       aes(x = Temperature, y = Energy.Consumption..kWh., color = HVAC.Consumption..kWh.)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "lm") +
+  labs(title = "Interaction between Temperature and HVAC Consumption",
+       x = "Temperature",
+       y = "Energy Consumption (kWh)",
+       color = "HVAC Consumption (kWh)")
+
+# Temperature x Building Size interaction plot
+ggplot(train_data[-influential,], 
+       aes(x = Temperature, y = Energy.Consumption..kWh., color = Building.Size.m.2.)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "lm") +
+  labs(title = "Interaction between Temperature and Building Size",
+       x = "Temperature",
+       y = "Energy Consumption (kWh)",
+       color = "Building Size (m²)")
+
+# Solar Irradiance x HVAC interaction plot
+ggplot(train_data[-influential,], 
+       aes(x = Solar.Irradiance, y = Energy.Consumption..kWh., color = HVAC.Consumption..kWh.)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "lm") +
+  labs(title = "Interaction between Solar Irradiance and HVAC Consumption",
+       x = "Solar Irradiance",
+       y = "Energy Consumption (kWh)",
+       color = "HVAC Consumption (kWh)")
+```
+
+### Interaction Model Results
+
+Our analysis of the interaction models revealed several key findings that none of the tested interactions showed statistical significance:
+
+-   Temperature × HVAC Consumption: p = 0.692
+-   Temperature × Building Size: p = 0.764
+-   Solar Irradiance × HVAC Consumption: p = 0.623
+
+ANOVA tests comparing models with and without interactions demonstrated no significant improvement:
+
+-   Temperature × HVAC Consumption: F = 0.16, p = 0.69
+-   Temperature × Building Size: F = 0.09, p = 0.76
+-   Solar Irradiance × HVAC Consumption: F = 0.24, p = 0.62
+
+The R-squared values remained consistently low (approximately 0.006-0.007) across all interaction models, indicating poor explanatory power.
+
+#### Visualisation Analysis
+
+The visualization of these relationships revealed:
+
+-   Data points showed high scatter with nearly flat regression lines
+-   No discernible patterns of interaction effects were visible
+-   The data exhibited substantial variability
+
+These findings suggest that adding interaction terms did not enhance the model's predictive capabilities. This leads to several possible interpretations about the relationships between variables that they are eithey truly independent of each other or they are related in a non-linear fashion or they are influenced by unmeasured factors not present in our dataset.
+
+## Stepwise search , Polynomial regression and Exhaustive search
+
+Right now original model without influential points is still better. Then we will use stepwise search , polynomial regression and exhaustive search trying find the better predictive model.
+
+```{r}
+# 1.Load required libraries
+library(leaps)
+
+# 2. Create stepwise model
+step_model = stepAIC(mlr_no_influential, direction = "both", trace = FALSE)
+
+# 3. Create polynomial model
+poly_model = lm(Energy.Consumption..kWh. ~ 
+                 poly(Temperature, 2) + 
+                 poly(Solar.Irradiance, 2) + 
+                 poly(HVAC.Consumption..kWh., 2) +
+                 poly(Building.Size.m.2., 2) +
+                 Building.Age..years. +
+                 Peak.Demand.Reduction.Indicator,
+                 data = train_data[-influential,])
+
+# 4. Create exhaustive search model
+# Prepare data for exhaustive search
+predictors = c("Temperature", "Solar.Irradiance", "HVAC.Consumption..kWh.", 
+                "Lighting.Consumption..kWh.", "Building.Size.m.2.", 
+                "Building.Age..years.", "Peak.Demand.Reduction.Indicator")
+
+# Perform exhaustive search
+exhaustive = regsubsets(Energy.Consumption..kWh. ~ ., 
+                        data = train_data[-influential, c("Energy.Consumption..kWh.", predictors)], 
+                        nvmax = length(predictors),
+                        method = "exhaustive")
+
+# Get summary of exhaustive search
+exhaust_summary = summary(exhaustive)
+
+# Find best model by adjusted R²
+best_adjr2_idx = which.max(exhaust_summary$adjr2)
+
+# Create best exhaustive model
+best_vars = names(coef(exhaustive, best_adjr2_idx))[-1]  # Remove intercept
+formula_str = paste("Energy.Consumption..kWh. ~", paste(best_vars, collapse = " + "))
+exhaustive_model = lm(as.formula(formula_str), data = train_data[-influential,])
+
+# 5. Function to get model performance metrics (keeping existing function)
+get_model_metrics = function(model, test_data) {
+    # Training metrics
+    train_resid = resid(model)
+    train_rmse = sqrt(mean(train_resid^2))
+    r2 = summary(model)$r.squared
+    adj_r2 = summary(model)$adj.r.squared
+    
+    # Test metrics
+    test_pred = predict(model, newdata = test_data)
+    test_resid = test_data$Energy.Consumption..kWh. - test_pred
+    test_rmse = sqrt(mean(test_resid^2))
+    
+    # Model diagnostics
+    shapiro_test = shapiro.test(train_resid)
+    bp_test = bptest(model)
+    
+    return(c(
+        Train_RMSE = train_rmse,
+        Test_RMSE = test_rmse,
+        R_squared = r2,
+        Adj_R_squared = adj_r2,
+        AIC = AIC(model),
+        BIC = BIC(model),
+        Shapiro_p = shapiro_test$p.value,
+        BP_p = bp_test$p.value
+    ))
+}
+
+# 6. Compare all models including exhaustive
+models = list(
+    Original = mlr_no_influential,
+    Stepwise = step_model,
+    Polynomial = poly_model,
+    Exhaustive = exhaustive_model
+)
+
+model_metrics = t(sapply(models, get_model_metrics, test_data = test_data))
+
+# Print formatted results
+print("Model Comparison Results:")
+print(round(model_metrics, 4))
+
+# Visualize residual plots for all models
+par(mfrow = c(2, 2))
+for (name in names(models)) {
+    plot(fitted(models[[name]]), resid(models[[name]]),
+         main = paste(name, "Model Residuals"),
+         xlab = "Fitted values", ylab = "Residuals")
+    abline(h = 0, col = "red", lty = 2)
+}
+
+# Reset plotting parameters
+par(mfrow = c(1, 1))
+
+# Print summaries of significant variables for each model
+print("Significant variables in each model (p < 0.05):")
+for (name in names(models)) {
+    cat("\n", name, "Model:\n")
+    coef_summary = summary(models[[name]])$coefficients
+    sig_vars = coef_summary[coef_summary[,4] < 0.05, ]
+    print(sig_vars)
+}
+
+# Print additional information about exhaustive search
+cat("\nExhaustive Search Details:\n")
+cat("Best model size:", length(best_vars), "variables\n")
+cat("Variables selected by exhaustive search:\n")
+print(best_vars)
+```
+
+From the output,we can compare these model in terms of RMSE , r-squared and adjusted r-squared in statistical perspective and also do model diagnostics and compare AIC/BIC value to know which model's complexity is better.
+
+Model Performance Comparison:
+
+1.  All models show very similar performance metrics:
+
+    -   Train RMSE: ranges from 17.53 to 17.56
+
+    -   Test RMSE: ranges from 19.39 to 19.41
+
+    -   R-squared values are extremely low (all below 1%)
+
+    -   Adjusted R-squared values are even lower (all below 0.4%)
+
+2.  Model Diagnostics: All models fail the Shapiro-Wilk test (p \< 0.05), indicating non-normal residuals and All models fail the Breusch-Pagan test (p \< 0.05), indicating heteroscedasticity
+
+3.  The residual plots show similar patterns across all models
+
+    -   A fairly even spread around zero
+
+    -   Some potential heteroscedasticity (fan-shaped pattern)
+
+    -   No obvious non-linear patterns
+
+4.  Model Complexity: Based on AIC/BIC, Stepwise model has the lowest AIC (12073) and tepwise model has the lowest BIC (12094) which this suggests it achieves the best balance of fit and complexity
+
+5.  Exhaustive Search Results : 3 variables are selected that are Building Size, Building Age and Peak Demand Reduction Indicator which s suggests these are potentially the most important predictor
+
+```{r}
+step_model
+```
+
+**Overall Conclusions**: None of the models provide good predictive power (very low R-squared values and the simpler Stepwise model performs slightly better considering model complexity and the Exhaustive search confirms that only a few variables are meaningful predictors. Thus the temporary best model is stepwise model whose predictors are building size and Peak.Demand.Reduction.Indicator.
+
+Given that all models perform similarly poorly, the simpler Stepwise model might be preferred for interpretability . The underlying relationships might be more complex than what linear models can capture.
+
+# Discussions
+
+## Dataset Limitations
+
+1.  Temporal Coverage:
+    -   The dataset was only sampled about 2000 observations covers one year (2023)
+    -   Seasonal patterns over multiple years cannot be analyzed and Long-term trends in energy consumption are not captured.
+
+## Potential Biases
+
+1.  Sample Selection Bias:
+    -   Data limited to Southern California, may not generalize to other regions
+    -   Random sampling of 2000 observations might not fully represent all building types
+    -   Removal of influential points could affect model generalizability
+2.  Temporal Bias:
+    -   2023 might have had unusual weather patterns
+    -   Energy consumption patterns might be affected by post-COVID changes
+    -   Single-year data might not capture typical usage patterns
+
+## Future Research Directions
+
+1.  Data Collection Improvements: Collect multi-year data to capture long-term trends
+2.  Modeling Enhancements:
+    -   Explore advanced machine learning techniques
+    -   Develop time series models for better prediction
+3.  Additional Analysis Areas:
+    -   Study interaction between building characteristics and weather patterns
+    -   Analyze cost-effectiveness of energy-saving measures
+    -   Investigate the impact of different energy management strategies
+
+This comprehensive analysis, despite its limitations, provides valuable insights for building energy management. While our models showed limited predictive power, they highlighted important factors affecting energy consumption. Future work should focus on gathering more detailed data and exploring more sophisticated modeling approaches to better understand and predict building energy consumption patterns.
