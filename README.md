@@ -12,7 +12,7 @@ Develop predictive models for energy usage based on available data.
 Provide actionable insights for optimizing energy strategies in Southern California buildings.
 
 ## Dataset
-- **Source**:  Kaggle
+- **Source**:  Kaggle(https://www.kaggle.com/datasets/datasetengineer/southern-california-energy-consumption)
 - **Time Period**: January 2018 to January 2024
 - **Size**: 52,586 records with 12 variables
 - **Key Variables**: Timestamp, building type, energy consumption, temperature, solar radiation, HVAC consumption, etc.
