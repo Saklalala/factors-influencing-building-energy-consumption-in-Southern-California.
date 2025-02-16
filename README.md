@@ -32,7 +32,7 @@ Provide actionable insights for optimizing energy strategies in Southern Califor
 - Models demonstrated consistent performance across different approaches:
   - Train RMSE: 17.53-17.56
   - Test RMSE: 19.39-19.41
-- Stepwise model showed optimal balance of complexity and performance (AIC: 12073, BIC: 12094)
+- Stepwise model showed optimal balance of complexity and performance
 
 ## Technical Stack
 - R
