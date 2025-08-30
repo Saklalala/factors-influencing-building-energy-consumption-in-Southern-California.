@@ -53,6 +53,3 @@ Provide actionable insights for optimizing energy strategies in Southern Califor
 - Xingzhi Du
 - Chen Liu
 - Banghao Chi
-
-## License
-This project is licensed under the MIT License - see the LICENSE file for details.
